@@ -1,0 +1,10 @@
+{
+  "domain": "pa120net",
+  "name": "PA120Net",
+  "version": "1.0.0",
+  "documentation": "https://your-documentation-url",
+  "requirements": [],
+  "codeowners": ["@siegeld"],
+  "config_flow": true,
+  "iot_class": "local_polling"
+}
