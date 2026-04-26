@@ -29,12 +29,14 @@ class PA120NetMediaPlayer(MediaPlayerEntity):
         self._entry = entry
         self._attr_name = entry.data["name"]
         self._attr_unique_id = entry.entry_id
-        self._state = STATE_ON  # Assuming the device is always on
         self._volume_level = self._convert_volume(api.volume)
         self._is_muted = api.is_muted
         self._available = api.connected
         self._attr_supported_features = (
-            MediaPlayerEntityFeature.VOLUME_SET | MediaPlayerEntityFeature.VOLUME_MUTE
+            MediaPlayerEntityFeature.VOLUME_SET
+            | MediaPlayerEntityFeature.VOLUME_MUTE
+            | MediaPlayerEntityFeature.TURN_ON
+            | MediaPlayerEntityFeature.TURN_OFF
         )
         self._api.register_callback(self._update_state)
 
@@ -50,8 +52,14 @@ class PA120NetMediaPlayer(MediaPlayerEntity):
 
     @property
     def state(self):
-        """Return the state of the device."""
-        return self._state
+        """Return the state of the device.
+
+        Reflects the device's AUD-STANDBY state: standby = STATE_OFF, otherwise
+        STATE_ON. If the TCP connection is down, falls back to STATE_OFF.
+        """
+        if not self._api.connected:
+            return STATE_OFF
+        return STATE_OFF if self._api.is_standby else STATE_ON
 
     @property
     def available(self):
@@ -79,6 +87,16 @@ class PA120NetMediaPlayer(MediaPlayerEntity):
         """Mute or unmute the media player."""
         await self._api.set_mute(mute)
         _LOGGER.debug("%s the device", "Muted" if mute else "Unmuted")
+
+    async def async_turn_on(self):
+        """Wake the amp from standby."""
+        await self._api.set_standby(False)
+        _LOGGER.debug("Turn on -> AUD-STANDBY 0")
+
+    async def async_turn_off(self):
+        """Put the amp into standby."""
+        await self._api.set_standby(True)
+        _LOGGER.debug("Turn off -> AUD-STANDBY 1")
 
     def _convert_volume(self, device_volume):
         """Convert device volume (-80 to 10) to Home Assistant volume (0..1)."""

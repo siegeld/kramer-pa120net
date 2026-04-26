@@ -13,6 +13,8 @@ class PA120NetAPI:
         self._writer = None
         self.volume = 0          # Initial volume
         self.is_muted = False    # Initial mute state (False = not muted)
+        self.is_standby = False  # Initial standby state (False = on)
+        self._standby_timeout = 5  # Preserved second arg of AUD-STANDBY
         self.connected = False
         self._callbacks = []
 
@@ -29,6 +31,7 @@ class PA120NetAPI:
                 # Optionally, request current state
                 await self.get_volume()
                 await self.get_mute()
+                await self.get_standby()
             except (ConnectionRefusedError, OSError) as e:
                 _LOGGER.error("Connection failed: %s", e)
                 await asyncio.sleep(5)
@@ -72,6 +75,21 @@ class PA120NetAPI:
                 _LOGGER.debug("Updated mute state to %s", self.is_muted)
             except IndexError as e:
                 _LOGGER.error("Error parsing mute response: %s", e)
+        elif message.startswith("~01@AUD-STANDBY"):
+            # Standby response: ~01@AUD-STANDBY <state>,<timeout>
+            # state: 0 = on, 1 = standby
+            if "ERR" in message:
+                _LOGGER.warning("Standby command error: %s", message)
+                return
+            try:
+                payload = message.split(" ", 1)[1]  # "0,5"
+                state_str, timeout_str = payload.split(",", 1)
+                self.is_standby = (state_str.strip() == "1")
+                self._standby_timeout = int(timeout_str)
+                self._notify_state_changed()
+                _LOGGER.debug("Updated standby=%s timeout=%s", self.is_standby, self._standby_timeout)
+            except (ValueError, IndexError) as e:
+                _LOGGER.error("Error parsing standby response %r: %s", message, e)
 
     async def send_command(self, command):
         if self.connected:
@@ -102,6 +120,20 @@ class PA120NetAPI:
     async def get_mute(self):
         # Send command to request current mute state, if supported
         await self.send_command("#AUD-MUTE? 1,1")
+
+    async def set_standby(self, standby: bool):
+        """Put the amp into standby (True) or wake it (False).
+
+        The PA-120Net requires the two-arg form `<state>,<timeout>`. Single-arg
+        form returns ERR 001. We preserve whatever timeout the device last
+        reported so this command doesn't change auto-standby behavior.
+        """
+        state = '1' if standby else '0'
+        command = f"#AUD-STANDBY {state},{self._standby_timeout}"
+        await self.send_command(command)
+
+    async def get_standby(self):
+        await self.send_command("#AUD-STANDBY?")
 
     def register_callback(self, callback):
         self._callbacks.append(callback)
