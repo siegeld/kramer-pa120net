@@ -26,7 +26,11 @@ class PA120NetAPI:
                 self.connected = True
                 _LOGGER.info("Connected to PA120Net at %s:%s", self._host, self._port)
                 self._loop.create_task(self._listen())
-                # Optionally, request current state
+                # The amp's auto-standby puts the audio subsystem to sleep,
+                # which makes every AUD-* command return ERR 033 until it's
+                # woken. #AUD-STANDBY 3,<5|10|15> rearms auto-standby and
+                # also wakes the unit, so do that before any audio query.
+                await self.wake()
                 await self.get_volume()
                 await self.get_mute()
             except (ConnectionRefusedError, OSError) as e:
@@ -91,9 +95,22 @@ class PA120NetAPI:
         await self.send_command(command)
 
     async def set_mute(self, mute):
+        # Always wake before muting/unmuting — if the amp is in auto-standby,
+        # AUD-MUTE returns ERR 033. wake() is idempotent when already awake
+        # (just resets the auto-standby timer).
+        await self.wake()
         state = '1' if mute else '0'
         command = f"#AUD-MUTE 1,1,{state}"
         await self.send_command(command)
+
+    async def wake(self):
+        """Wake the audio subsystem from auto-standby.
+
+        The PA-120Net only accepts #AUD-STANDBY 3,<5|10|15> (auto-standby
+        timer), but issuing it also wakes the audio path, which is the only
+        way to get AUD-* commands working again after the unit auto-slept.
+        """
+        await self.send_command("#AUD-STANDBY 3,15")
 
     async def get_volume(self):
         # Send command to request current volume, if supported
