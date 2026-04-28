@@ -20,7 +20,13 @@ async def async_setup_entry(hass, entry, async_add_entities):
     async_add_entities([player])
 
 class PA120NetMediaPlayer(MediaPlayerEntity):
-    """Representation of the PA120Net as a media player."""
+    """Representation of the PA120Net as a media player.
+
+    The amp's Protocol 3000 AUD-STANDBY command can't actually drive the unit
+    in/out of standby (only the auto-standby timeout is settable), so power
+    on/off is implemented via AUD-MUTE. Mute is therefore not exposed as a
+    separate feature.
+    """
 
     _attr_device_class = MediaPlayerDeviceClass.RECEIVER
 
@@ -30,11 +36,9 @@ class PA120NetMediaPlayer(MediaPlayerEntity):
         self._attr_name = entry.data["name"]
         self._attr_unique_id = entry.entry_id
         self._volume_level = self._convert_volume(api.volume)
-        self._is_muted = api.is_muted
         self._available = api.connected
         self._attr_supported_features = (
             MediaPlayerEntityFeature.VOLUME_SET
-            | MediaPlayerEntityFeature.VOLUME_MUTE
             | MediaPlayerEntityFeature.TURN_ON
             | MediaPlayerEntityFeature.TURN_OFF
         )
@@ -52,14 +56,10 @@ class PA120NetMediaPlayer(MediaPlayerEntity):
 
     @property
     def state(self):
-        """Return the state of the device.
-
-        Reflects the device's AUD-STANDBY state: standby = STATE_OFF, otherwise
-        STATE_ON. If the TCP connection is down, falls back to STATE_OFF.
-        """
+        """Power state derived from mute: muted = off, unmuted = on."""
         if not self._api.connected:
             return STATE_OFF
-        return STATE_OFF if self._api.is_standby else STATE_ON
+        return STATE_OFF if self._api.is_muted else STATE_ON
 
     @property
     def available(self):
@@ -71,11 +71,6 @@ class PA120NetMediaPlayer(MediaPlayerEntity):
         """Return the volume level (0..1)."""
         return self._volume_level
 
-    @property
-    def is_volume_muted(self):
-        """Return True if volume is muted."""
-        return self._is_muted
-
     async def async_set_volume_level(self, volume):
         """Set volume level, volume range is 0..1."""
         # Convert volume level to device-specific value (-80 to 10)
@@ -83,20 +78,15 @@ class PA120NetMediaPlayer(MediaPlayerEntity):
         await self._api.set_volume(device_volume)
         _LOGGER.debug("Set volume level to %s (%s)", volume, device_volume)
 
-    async def async_mute_volume(self, mute):
-        """Mute or unmute the media player."""
-        await self._api.set_mute(mute)
-        _LOGGER.debug("%s the device", "Muted" if mute else "Unmuted")
-
     async def async_turn_on(self):
-        """Wake the amp from standby."""
-        await self._api.set_standby(False)
-        _LOGGER.debug("Turn on -> AUD-STANDBY 0")
+        """Power on by unmuting."""
+        await self._api.set_mute(False)
+        _LOGGER.debug("Turn on -> AUD-MUTE 0")
 
     async def async_turn_off(self):
-        """Put the amp into standby."""
-        await self._api.set_standby(True)
-        _LOGGER.debug("Turn off -> AUD-STANDBY 1")
+        """Power off by muting."""
+        await self._api.set_mute(True)
+        _LOGGER.debug("Turn off -> AUD-MUTE 1")
 
     def _convert_volume(self, device_volume):
         """Convert device volume (-80 to 10) to Home Assistant volume (0..1)."""
@@ -112,5 +102,4 @@ class PA120NetMediaPlayer(MediaPlayerEntity):
         """Update the internal state from the API."""
         self._available = self._api.connected
         self._volume_level = self._convert_volume(self._api.volume)
-        self._is_muted = self._api.is_muted
         self.async_write_ha_state()

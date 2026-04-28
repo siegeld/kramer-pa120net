@@ -31,9 +31,8 @@ Go to **Settings** > **Devices & Services** > **Add Integration** > **PA120Net**
 
 ## Features
 
-- **Power on/off** — wake from / put into standby via `AUD-STANDBY`
+- **Power on/off** — implemented via mute (`AUD-MUTE`); the PA-120Net's `AUD-STANDBY` command only configures the auto-standby timer and can't be used to put the amp in/out of standby on demand
 - **Volume control** — maps the device's -80 dB to +10 dB range to Home Assistant's 0–100% scale
-- **Mute/unmute** — toggle mute via the Kramer protocol
 - **Push updates** — state changes from the device (front panel, other controllers) are reflected instantly
 - **Auto-reconnect** — recovers automatically if the TCP connection is lost
 
@@ -45,10 +44,8 @@ The integration uses the Kramer Protocol 3000 ASCII command set over TCP:
 |---------|-------------|
 | `#AUD-LVL 1,1,<vol>` | Set volume (-80 to 10) |
 | `#AUD-LVL? 1,1` | Query current volume |
-| `#AUD-MUTE 1,1,<0\|1>` | Set mute (0=off, 1=on) |
+| `#AUD-MUTE 1,1,<0\|1>` | Set mute (0=off=on/playing, 1=on=muted/off); used as power on/off |
 | `#AUD-MUTE? 1,1` | Query mute state |
-| `#AUD-STANDBY <0\|1>,<timeout>` | Set standby (0=on, 1=standby); two-arg form required |
-| `#AUD-STANDBY?` | Query standby state and auto-standby timeout |
 
 ## License
 
